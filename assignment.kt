@@ -1,137 +1,208 @@
-import kotlin.random.Random
+import java.awt.*
+import java.awt.event.MouseAdapter
+import java.awt.event.MouseEvent
+import javax.swing.JFrame
+import javax.swing.JOptionPane
+import javax.swing.JPanel
+import javax.swing.Timer
 
-class Minesweeper(private val numRows: Int, private val numCols: Int, private val numMines: Int) {
-    private val board: Array<Array<Cell>>
-    
+class Connect4 : JPanel() {
+    private var currentPlayer = 1
+    private val board: Array<IntArray> = Array(6) { IntArray(7) }
+
+    private var fallingPieceColumn = -1
+    private var fallingPieceRow = -1
+    private var fallingPieceY = -1
+
+    private var timer: Timer? = null
+
     init {
-        board = Array(numRows) { row ->
-            Array(numCols) { col ->
-                Cell(row, col)
+        preferredSize = Dimension(700, 600)
+        background = Color.BLUE
+
+        addMouseListener(object : MouseAdapter() {
+            override fun mouseClicked(e: MouseEvent) {
+                val column = e.x / (width / 7)
+                if (isValidMove(column)) {
+                    dropPiece(column)
+                }
             }
-        }
-        
-        placeMines()
-        calculateAdjacentMines()
+        })
     }
-    
-    private fun placeMines() {
-        val totalCells = numRows * numCols
-        val mineIndices = mutableSetOf<Int>()
-        
-        while (mineIndices.size < numMines) {
-            val randomIndex = Random.nextInt(totalCells)
-            mineIndices.add(randomIndex)
-        }
-        
-        for (index in mineIndices) {
-            val row = index / numCols
-            val col = index % numCols
-            board[row][col].isMine = true
-        }
+
+    override fun paintComponent(g: Graphics) {
+        super.paintComponent(g)
+        drawBoard(g)
     }
-    
-    private fun calculateAdjacentMines() {
-        for (row in 0 until numRows) {
-            for (col in 0 until numCols) {
-                if (!board[row][col].isMine) {
-                    val adjacentMines = getAdjacentCells(row, col)
-                        .count { cell -> cell.isMine }
-                    board[row][col].adjacentMines = adjacentMines
+
+    private fun isValidMove(column: Int): Boolean {
+        return fallingPieceRow == -1 && column >= 0 && column < 7 && board[0][column] == 0
+    }
+
+    private fun dropPiece(column: Int) {
+        fallingPieceRow = 0
+        fallingPieceColumn = column
+        fallingPieceY = 0
+
+        val rowHeight = height / 6
+
+        timer?.stop()
+        timer = Timer(10) {
+            fallingPieceY += 5
+
+            if (fallingPieceY >= rowHeight * (fallingPieceRow + 1)) {
+                fallingPieceRow++
+                if (fallingPieceRow == 5 || board[fallingPieceRow + 1][fallingPieceColumn] != 0) {
+                    timer?.stop()
+                    board[fallingPieceRow][fallingPieceColumn] = currentPlayer
+
+                    if (checkWin()) {
+                        val winner = if (currentPlayer == 1) "Player 1" else "Player 2"
+                        showWinnerDialog(winner)
+                        resetGame()
+                    } else if (isBoardFull()) {
+                        showTieDialog()
+                        resetGame()
+                    } else {
+                        currentPlayer = if (currentPlayer == 1) 2 else 1
+                        fallingPieceRow = -1
+                        fallingPieceColumn = -1
+                        fallingPieceY = -1
+                    }
+                }
+            }
+
+            repaint()
+        }
+        timer?.start()
+    }
+
+    private fun drawBoard(g: Graphics) {
+        val columnWidth = width / 7
+        val rowHeight = height / 6
+
+        // Create a Stroke with a thicker width for the border
+        val borderStroke = BasicStroke(3f)
+
+        // Draw the tokens
+        for (row in 0 until 6) {
+            for (col in 0 until 7) {
+                val x = col * columnWidth
+                val y = row * rowHeight
+
+                // Calculate the diameter for the circle
+                val diameter = Math.min(columnWidth, rowHeight)
+
+                // Calculate the offset to center the circle
+                val xOffset = (columnWidth - diameter) / 2
+                val yOffset = (rowHeight - diameter) / 2
+
+                // Draw the token
+                if (row == fallingPieceRow && col == fallingPieceColumn) {
+                    // Draw the falling piece
+                    g.color = if (currentPlayer == 1) Color.RED else Color.YELLOW
+                    g.fillOval(x + xOffset + 2, y + yOffset + 2, diameter - 4, diameter - 4)
+                } else if (board[row][col] != 0) {
+                    // Draw the placed pieces with a thick black border
+                    when (board[row][col]) {
+                        1 -> g.color = Color.RED
+                        2 -> g.color = Color.YELLOW
+                    }
+                    g.fillOval(x + xOffset + 2, y + yOffset + 2, diameter - 4, diameter - 4)
+
+                    // Set the Stroke to draw a thicker border
+                    val originalStroke = (g as Graphics2D).stroke
+                    g.stroke = borderStroke
+                    g.color = Color.BLACK
+                    g.drawOval(x + xOffset + 2, y + yOffset + 2, diameter - 4, diameter - 4)
+
+                    // Reset the Stroke to the original value
+                    g.stroke = originalStroke
+                } else {
+                    // Draw empty spaces
+                    g.color = Color.WHITE
+                    g.fillOval(x + xOffset + 2, y + yOffset + 2, diameter - 4, diameter - 4)
                 }
             }
         }
     }
-    
-    private fun getAdjacentCells(row: Int, col: Int): List<Cell> {
-        val adjacentCells = mutableListOf<Cell>()
-        
-        for (dRow in -1..1) {
-            for (dCol in -1..1) {
-                val newRow = row + dRow
-                val newCol = col + dCol
-                
-                if (newRow in 0 until numRows && newCol in 0 until numCols) {
-                    adjacentCells.add(board[newRow][newCol])
+
+
+
+    private fun checkWin(): Boolean {
+        // Check horizontal
+        for (row in 0 until 6) {
+            for (col in 0 until 4) {
+                if (board[row][col] != 0 && board[row][col] == board[row][col + 1] && board[row][col] == board[row][col + 2] && board[row][col] == board[row][col + 3]) {
+                    return true
                 }
             }
         }
-        
-        return adjacentCells
-    }
-    
-    fun displayBoard(revealMines: Boolean = false) {
-        for (row in 0 until numRows) {
-            for (col in 0 until numCols) {
-                val cell = board[row][col]
-                val displayValue = if (revealMines && cell.isMine) "X" else cell.displayValue()
-                print("$displayValue ")
-            }
-            println()
-        }
-    }
-    
-    fun revealCell(row: Int, col: Int): Boolean {
-        val cell = board[row][col]
-        
-        if (cell.isMine) {
-            return false
-        }
-        
-        cell.isRevealed = true
-        
-        if (cell.adjacentMines == 0) {
-            val adjacentCells = getAdjacentCells(row, col)
-                .filter { !it.isRevealed }
-            for (adjacentCell in adjacentCells) {
-                revealCell(adjacentCell.row, adjacentCell.col)
+
+        // Check vertical
+        for (row in 0 until 3) {
+            for (col in 0 until 7) {
+                if (board[row][col] != 0 && board[row][col] == board[row + 1][col] && board[row][col] == board[row + 2][col] && board[row][col] == board[row + 3][col]) {
+                    return true
+                }
             }
         }
-        
+
+        // Check diagonal (top-left to bottom-right)
+        for (row in 0 until 3) {
+            for (col in 0 until 4) {
+                if (board[row][col] != 0 && board[row][col] == board[row + 1][col + 1] && board[row][col] == board[row + 2][col + 2] && board[row][col] == board[row + 3][col + 3]) {
+                    return true
+                }
+            }
+        }
+
+        // Check diagonal (top-right to bottom-left)
+        for (row in 0 until 3) {
+            for (col in 3 until 7) {
+                if (board[row][col] != 0 && board[row][col] == board[row + 1][col - 1] && board[row][col] == board[row + 2][col - 2] && board[row][col] == board[row + 3][col - 3]) {
+                    return true
+                }
+            }
+        }
+
+        return false
+    }
+
+    private fun isBoardFull(): Boolean {
+        for (row in 0 until 6) {
+            for (col in 0 until 7) {
+                if (board[row][col] == 0) {
+                    return false
+                }
+            }
+        }
         return true
     }
-    
-    inner class Cell(val row: Int, val col: Int) {
-        var isMine: Boolean = false
-        var isRevealed: Boolean = false
-        var adjacentMines: Int = 0
-        
-        fun displayValue(): String {
-            return if (isRevealed) {
-                if (isMine) "M" else adjacentMines.toString()
-            } else {
-                "-"
-            }
-        }
+
+    private fun showWinnerDialog(winner: String) {
+        JOptionPane.showMessageDialog(this, "$winner wins!", "Game Over", JOptionPane.INFORMATION_MESSAGE)
+    }
+
+    private fun showTieDialog() {
+        JOptionPane.showMessageDialog(this, "It's a tie!", "Game Over", JOptionPane.INFORMATION_MESSAGE)
+    }
+
+    private fun resetGame() {
+        currentPlayer = 1
+        board.forEach { row -> row.fill(0) }
+        fallingPieceColumn = -1
+        fallingPieceRow = -1
+        fallingPieceY = -1
+        timer?.stop()
+        repaint()
     }
 }
 
 fun main() {
-    val numRows = 10
-    val numCols = 10
-    val numMines = 10
-    
-    val game = Minesweeper(numRows, numCols, numMines)
-    game.displayBoard()
-    
-    while (true) {
-        print("Enter the row number (0-$numRows): ")
-        val row = readLine()?.toIntOrNull()
-        
-        print("Enter the column number (0-$numCols): ")
-        val col = readLine()?.toIntOrNull()
-        
-        if (row != null && col != null && row in 0 until numRows && col in 0 until numCols) {
-            val success = game.revealCell(row, col)
-            
-            if (success) {
-                game.displayBoard()
-            } else {
-                println("Game Over! You hit a mine.")
-                game.displayBoard(revealMines = true)
-                break
-            }
-        } else {
-            println("Invalid input! Please try again.")
-        }
-    }
+    val frame = JFrame("Connect 4")
+    frame.defaultCloseOperation = JFrame.EXIT_ON_CLOSE
+    frame.contentPane.add(Connect4())
+    frame.pack()
+    frame.isVisible = true
 }
